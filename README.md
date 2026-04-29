@@ -76,99 +76,222 @@ Libraries: NumPy, Matplotlib, SciPy
 # Program
 # Ideal
 ```
+# Impulse Sampling
 import numpy as np
 import matplotlib.pyplot as plt
+from scipy.signal import resample
 
-# Time axis
-fs = 1000
-t = np.linspace(0, 1, fs)
-
-# Original signal
+fs = 100
+t = np.arange(0, 1, 1/fs) 
 f = 5
-x = np.sin(2 * np.pi * f * t)
+signal = np.sin(2 * np.pi * f * t)
 
-# Sampling frequency
-fs_sample = 50
-Ts = 1 / fs_sample
+# Sampled signal
+t_sampled = np.arange(0, 1, 1/fs)
+signal_sampled = np.sin(2 * np.pi * f * t_sampled)
 
-# Ideal sampling (impulse-like)
-sample_points = np.arange(0, 1, Ts)
-sampled_values = np.sin(2 * np.pi * f * sample_points)
+# Reconstructed signal
+reconstructed_signal = resample(signal_sampled, len(t))
 
-# Plot
-plt.figure()
-plt.plot(t, x, label="Original Signal")
-plt.stem(sample_points, sampled_values, linefmt='r-', markerfmt='ro', basefmt='k-')
-plt.title("Ideal Sampling")
+# Create subplots
+plt.figure(figsize=(12, 8))
+
+# 1. Continuous Signal
+plt.subplot(3,1,1)
+plt.plot(t, signal, label='Continuous Signal')
+plt.title('Continuous Signal (fs = 100 Hz)')
+plt.xlabel('Time [s]')
+plt.ylabel('Amplitude')
+plt.grid(True)
 plt.legend()
+
+# 2. Sampled Signal
+plt.subplot(3,1,2)
+plt.stem(t_sampled, signal_sampled, linefmt='r-', markerfmt='ro', basefmt='r-', label='Sampled Signal (fs = 100 Hz)')
+plt.title('Sampling of Continuous Signal (fs = 100 Hz)')
+plt.xlabel('Time [s]')
+plt.ylabel('Amplitude')
+plt.grid(True)
+plt.legend()
+
+# 3. Reconstructed Signal
+plt.subplot(3,1,3)
+plt.plot(t, reconstructed_signal, 'r--', label='Reconstructed Signal (fs = 100 Hz)')
+plt.title('Reconstruction of Sampled Signal (fs = 100 Hz)')
+plt.xlabel('Time [s]')
+plt.ylabel('Amplitude')
+plt.grid(True)
+plt.legend()
+
+plt.tight_layout()
 plt.show()
 ```
 # Natural
 ```
+# Natural sampling
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.signal import square
+from scipy.signal import butter, lfilter
 
-# Time axis
-fs = 1000
-t = np.linspace(0, 1, fs)
+# Parameters
+fs = 1000  # Sampling frequency (samples per second)
+T = 1  # Duration in seconds
+t = np.arange(0, T, 1/fs)  # Time vector
 
-# Original signal
-f = 5
-x = np.sin(2 * np.pi * f * t)
+# Message Signal (sine wave message)
+fm = 5  # Frequency of message signal (Hz)
+message_signal = np.sin(2 * np.pi * fm * t)
 
-# Sampling frequency
-fs_sample = 50
+# Pulse Train Parameters
+pulse_rate = 50  # pulses per second
+pulse_train = np.zeros_like(t)
 
-# Pulse train (natural sampling)
-pulse = (square(2 * np.pi * fs_sample * t, duty=0.2) + 1) / 2
+# Construct Pulse Train (rectangular pulses)
+pulse_width = int(fs / pulse_rate / 2)
+for i in range(0, len(t), int(fs / pulse_rate)):
+    pulse_train[i:i+pulse_width] = 1    
 
-# Natural sampled signal
-natural_sample = x * pulse
+# Natural Sampling
+nat_signal = message_signal * pulse_train
 
-# Plot
-plt.figure()
-plt.plot(t, x, label="Original Signal")
-plt.plot(t, natural_sample, label="Natural Sampling", color='red')
-plt.title("Natural Sampling")
+# Reconstruction (Demodulation) Process
+sampled_signal = nat_signal[pulse_train == 1]
+
+# Create a time vector for the sampled points
+sample_times = t[pulse_train == 1]
+
+# Interpolation - Zero-Order Hold (just for visualization)
+reconstructed_signal = np.zeros_like(t)
+for i, time in enumerate(sample_times):
+    index = np.argmin(np.abs(t - time))
+    reconstructed_signal[index:index+pulse_width] = sampled_signal[i]
+
+# Low-pass Filter (optional, smoother reconstruction)
+def lowpass_filter(signal, cutoff, fs, order=5):
+    nyquist = 0.5 * fs
+    normal_cutoff = cutoff / nyquist
+    b, a = butter(order, normal_cutoff, btype='low', analog=False)
+    return lfilter(b, a, signal)
+
+reconstructed_signal = lowpass_filter(reconstructed_signal, 10, fs)
+
+plt.figure(figsize=(14, 10))
+
+# Original Message Signal
+plt.subplot(4, 1, 1)
+plt.plot(t, message_signal, label='Original Message Signal')
 plt.legend()
+plt.grid(True)
+
+# Pulse Train
+plt.subplot(4, 1, 2)
+plt.plot(t, pulse_train, label='Pulse Train')
+plt.legend()
+plt.grid(True)
+
+# Natural Sampling
+plt.subplot(4, 1, 3)
+plt.plot(t, nat_signal, label='Natural Sampling')
+plt.legend()
+plt.grid(True)
+
+# Reconstructed Signal
+plt.subplot(4, 1, 4)
+plt.plot(t, reconstructed_signal, label='Reconstructed Message Signal', color='green')
+plt.legend()
+plt.grid(True)
+
+plt.tight_layout()
 plt.show()
+
 ```
 # Flat-top
 ```
 import numpy as np
 import matplotlib.pyplot as plt
+from scipy.signal import butter, lfilter
 
-# Time axis
-fs = 1000
-t = np.linspace(0, 1, fs)
+fs = 1000  # Sampling frequency (samples per second)
+T = 1      # Duration in seconds
+t = np.arange(0, T, 1/fs)  # Time vector
+fm = 5     # Frequency of message signal (Hz)
+message_signal = np.sin(2 * np.pi * fm * t)
+pulse_rate = 50  # pulses per second
+pulse_train_indices = np.arange(0, len(t), int(fs / pulse_rate))
+pulse_train = np.zeros_like(t)
+pulse_train[pulse_train_indices] = 1
+flat_top_signal = np.zeros_like(t)
+sample_times = t[pulse_train_indices]
+pulse_width_samples = int(fs / (2 * pulse_rate)) # Adjust pulse width as needed
 
-# Original signal
-f = 5
-x = np.sin(2 * np.pi * f * t)
+for i, sample_time in enumerate(sample_times):
+    index = np.argmin(np.abs(t - sample_time))
+    if index < len(message_signal):
+        sample_value = message_signal[index]
+        start_index = index
+        end_index = min(index + pulse_width_samples, len(t))
+        flat_top_signal[start_index:end_index] = sample_value
 
-# Sampling frequency
-fs_sample = 50
-step = int(fs / fs_sample)
+def lowpass_filter(signal, cutoff, fs, order=5):
+    nyquist = 0.5 * fs
+    normal_cutoff = cutoff / nyquist
+    b, a = butter(order, normal_cutoff, btype='low', analog=False)
+    return lfilter(b, a, signal)
 
-# Flat-top sampling
-flat_top = np.zeros_like(t)
+cutoff_freq = 2 * fm  # Nyquist rate or slightly higher
+reconstructed_signal = lowpass_filter(flat_top_signal, cutoff_freq, fs)
 
-for i in range(0, len(t), step):
-    flat_top[i:i+step] = x[i]
+plt.figure(figsize=(14, 10))
 
-# Plot
-plt.figure()
-plt.plot(t, x, label="Original Signal")
-plt.plot(t, flat_top, label="Flat-top Sampling", color='green')
-plt.title("Flat-top Sampling")
+plt.subplot(4, 1, 1)
+plt.plot(t, message_signal, label='Original Message Signal')
+plt.title('Original Message Signal')
+plt.xlabel('Time (s)')
+plt.ylabel('Amplitude')
 plt.legend()
+plt.grid(True)
+
+plt.subplot(4, 1, 2)
+plt.stem(t[pulse_train_indices], pulse_train[pulse_train_indices], basefmt=" ", label='Ideal Sampling Instances')
+plt.title('Ideal Sampling Instances')
+plt.xlabel('Time (s)')
+plt.ylabel('Amplitude')
+plt.legend()
+plt.grid(True)
+
+plt.subplot(4, 1, 3)
+plt.plot(t, flat_top_signal, label='Flat-Top Sampled Signal')
+plt.title('Flat-Top Sampled Signal')
+plt.xlabel('Time (s)')
+plt.ylabel('Amplitude')
+plt.grid(True)
+plt.legend()
+
+plt.subplot(4, 1, 4)
+plt.plot(t, reconstructed_signal, label=f'Reconstructed Signal (Low-pass Filter, Cutoff={cutoff_freq} Hz)', color='green')
+plt.title('Reconstructed Signal')
+plt.xlabel('Time (s)')
+plt.ylabel('Amplitude')
+plt.legend()
+plt.grid(True)
+plt.tight_layout()
 plt.show()
 ```
 # Output Waveform
-<img width="741" height="567" alt="image" src="https://github.com/user-attachments/assets/9eeb8c23-9ba8-4446-9d9b-9690f9fcfcb4" />
-<img width="732" height="561" alt="image" src="https://github.com/user-attachments/assets/5c1d433f-7282-4f40-ac4c-b9f9309a949d" />
-<img width="747" height="560" alt="image" src="https://github.com/user-attachments/assets/6187fe43-5de9-4307-a289-819bd0443ccf" />
+
+## Ideal Sampling
+
+<img width="1189" height="790" alt="dc ideal" src="https://github.com/user-attachments/assets/a6431134-6afd-46af-a7ae-bf76285c894b" />
+
+## Natural Sampling
+
+<img width="1390" height="989" alt="dc natural" src="https://github.com/user-attachments/assets/2f2c2e99-46c2-4e89-89d8-9bda85289aaa" />
+
+
+## Flat-top Sampling
+
+<img width="1398" height="990" alt="dc flat" src="https://github.com/user-attachments/assets/fdba9be6-bd39-4e8a-9a54-e7c2428204f1" />
+
 
 
 # Results
